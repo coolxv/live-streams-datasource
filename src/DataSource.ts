@@ -1,8 +1,8 @@
 //import defaults from 'lodash/defaults';
 import { isEmpty } from 'lodash';
 import { Observable, from, of, merge } from 'rxjs';
-import { map, mergeMap, catchError } from 'rxjs/operators';
-
+import { map, catchError } from 'rxjs/operators';
+// import { map, mergeMap, catchError } from 'rxjs/operators';
 import { BackendSrv } from '@grafana/runtime';
 import { DataQueryRequest, DataQueryResponse, DataSourceApi, DataSourceInstanceSettings, LoadingState } from '@grafana/data';
 import { LiveStreamsTarget, LiveStreamsQuery, LiveStreamsDataSourceOptions, DatasourceRequestOptions } from './Types';
@@ -72,13 +72,26 @@ export class DataSource extends DataSourceApi<LiveStreamsQuery, LiveStreamsDataS
     };
   }
 
+  // private runStream = (target: LiveStreamsQuery, options: { maxDataPoints?: number }): Observable<DataQueryResponse> => {
+  //   const liveTarget = this.createLiveTarget(target, options);
+
+  //   let stream = from('1').pipe(
+  //     mergeMap(() => this.streams.getStream(liveTarget)),
+  //     map(data => ({
+  //       data: data,
+  //       key: `ls-${liveTarget.refId}`,
+  //       state: LoadingState.Streaming,
+  //     }))
+  //   );
+  //   console.log(stream);
+  //   return stream;
+  // };
   private runStream = (target: LiveStreamsQuery, options: { maxDataPoints?: number }): Observable<DataQueryResponse> => {
     const liveTarget = this.createLiveTarget(target, options);
 
-    let stream = from('1').pipe(
-      mergeMap(() => this.streams.getStream(liveTarget)),
-      map(info => ({
-        data: info,
+    let stream = this.streams.getStream(liveTarget).pipe(
+      map(data => ({
+        data: data,
         key: `ls-${liveTarget.refId}`,
         state: LoadingState.Streaming,
       }))

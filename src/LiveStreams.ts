@@ -6,49 +6,88 @@ import { LiveStreamsTarget } from './Types';
 import { map, finalize } from 'rxjs/operators';
 import { createResponseBufferedData, appendResponseToBufferedData } from './ResultTransformer';
 
-/**
- * Cache of websocket streams that can be returned as observable. In case there already is a stream for particular
- * target it is returned and on subscription returns the latest dataFrame.
- */
 export class LiveStreams {
+  /**
+   * Cache of websocket streams that can be returned as observable. In case there already is a stream for particular
+   * target it is returned and on subscription returns the latest dataFrame.
+   */
   private streams: KeyValue<Observable<DataFrame[]>> = {};
 
   getStream(target: LiveStreamsTarget): Observable<DataFrame[]> {
     let stream = this.streams[target.url];
-    if (stream) {
-      return stream;
+    if (!stream) {
+      console.log('new webSocket');
+      const data = createResponseBufferedData(target);
+      stream = webSocket({
+        url: target.url,
+        closingObserver: {
+          next() {
+            console.log('closingObserver');
+          },
+        },
+        closeObserver: {
+          next() {
+            console.log('closeObserver');
+          },
+        },
+        openObserver: {
+          next() {
+            console.log('openObserver');
+          },
+        },
+      }).pipe(
+        finalize(() => {
+          console.log('delete finalize ws');
+          // delete this.streams[target.url];
+        }),
+        map(rsp => {
+          appendResponseToBufferedData(rsp, data);
+          return [data];
+        })
+      );
+      this.streams[target.url] = stream;
     }
-    const data = createResponseBufferedData(target);
-    stream = webSocket(target.url).pipe(
-      finalize(() => {
-        console.log('delete');
-        delete this.streams[target.url];
-      }),
-      map(rsp => {
-        appendResponseToBufferedData(rsp, data);
-        return [data];
-      })
-    );
-    this.streams[target.url] = stream;
-    return stream;
+    let obs = new Observable<DataFrame[]>(subscriber => {
+      console.log('new subscribing');
+      let observer = {
+        next: (msg: any) => subscriber.next(msg),
+        error: (err: any) => {
+          console.log('Observer got an error: ' + err);
+          subscriber.error(err);
+        },
+        complete: () => {
+          console.log('Observer got a complete notification');
+          subscriber.complete();
+        },
+      };
+      let subscription = stream.subscribe(observer);
+      console.log(this.streams);
+      return () => {
+        subscription.unsubscribe();
+        console.log('delete unsubscribing');
+        console.log(this.streams);
+      };
+    });
+    console.log(this.streams);
+    return obs;
   }
   // getStream(target: LiveStreamsTarget): Observable<DataFrame[]> {
-  //   const data = new CircularDataFrame({ capacity: target.size });
-  //   data.addField({ name: 'value', type: FieldType.string });
-  //   let stream: WebSocketSubject<any> = webSocket(target.url);
-  //   const observableA = stream.multiplex(
-  //     () => ({ subscribe: 'A' }), // When server gets this message, it will start sending messages for 'A'...
-  //     () => ({ unsubscribe: 'A' }), // ...and when gets this one, it will stop.
-  //     message => true // If the function returns `true` message is passed down the stream. Skipped if the function returns false.
-  //   );
-  //   let obj = observableA.pipe(
+  //   let stream = this.streams[target.url];
+  //   if (stream) {
+  //     return stream;
+  //   }
+  //   const data = createResponseBufferedData(target);
+  //   stream = webSocket(target.url).pipe(
+  //     finalize(() => {
+  //       console.log('delete');
+  //       delete this.streams[target.url];
+  //     }),
   //     map(rsp => {
-  //       console.log(rsp);
-  //       let value = Math.random() * 100;
-  //       data.values.value.add(`${value}`);
+  //       appendResponseToBufferedData(rsp, data);
   //       return [data];
   //     })
   //   );
-  //   return obj;
+  //   this.streams[target.url] = stream;
+  //   return stream;
   // }
 }
