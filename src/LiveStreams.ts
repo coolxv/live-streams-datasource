@@ -1,7 +1,7 @@
 //import { FieldType, DataQueryResponse, CircularDataFrame } from '@grafana/data';
 import { KeyValue, DataFrame } from '@grafana/data';
 import { Observable } from 'rxjs';
-import { webSocket } from 'rxjs/webSocket';
+import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 import { LiveStreamsTarget } from './Types';
 import { map, finalize } from 'rxjs/operators';
 import { createResponseBufferedData, appendResponseToBufferedData } from './ResultTransformer';
@@ -13,81 +13,86 @@ export class LiveStreams {
    */
   private streams: KeyValue<Observable<DataFrame[]>> = {};
 
-  getStream(target: LiveStreamsTarget): Observable<DataFrame[]> {
-    let stream = this.streams[target.url];
-    if (!stream) {
-      console.log('new webSocket');
-      const data = createResponseBufferedData(target);
-      stream = webSocket({
-        url: target.url,
-        closingObserver: {
-          next() {
-            console.log('closingObserver');
-          },
-        },
-        closeObserver: {
-          next() {
-            console.log('closeObserver');
-          },
-        },
-        openObserver: {
-          next() {
-            console.log('openObserver');
-          },
-        },
-      }).pipe(
-        finalize(() => {
-          console.log('delete finalize ws');
-          // delete this.streams[target.url];
-        }),
-        map(rsp => {
-          appendResponseToBufferedData(rsp, data);
-          return [data];
-        })
-      );
-      this.streams[target.url] = stream;
-    }
-    let obs = new Observable<DataFrame[]>(subscriber => {
-      console.log('new subscribing');
-      let observer = {
-        next: (msg: any) => subscriber.next(msg),
-        error: (err: any) => {
-          console.log('Observer got an error: ' + err);
-          subscriber.error(err);
-        },
-        complete: () => {
-          console.log('Observer got a complete notification');
-          subscriber.complete();
-        },
-      };
-      let subscription = stream.subscribe(observer);
-      console.log(this.streams);
-      return () => {
-        subscription.unsubscribe();
-        console.log('delete unsubscribing');
-        console.log(this.streams);
-      };
-    });
-    console.log(this.streams);
-    return obs;
-  }
   // getStream(target: LiveStreamsTarget): Observable<DataFrame[]> {
   //   let stream = this.streams[target.url];
-  //   if (stream) {
-  //     return stream;
+  //   if (!stream) {
+  //     const data = createResponseBufferedData(target);
+  //     let streams = this.streams;
+  //     stream = webSocket({
+  //       url: target.url,
+  //       closingObserver: {
+  //         next() {
+  //           console.log('closingObserver');
+  //         },
+  //       },
+  //       closeObserver: {
+  //         next(e) {
+  //           console.log('closeObserver');
+  //           delete streams[target.url];
+  //         },
+  //       },
+  //       openObserver: {
+  //         next() {
+  //           console.log('openObserver');
+  //         },
+  //       },
+  //     }).pipe(
+  //       map(rsp => {
+  //         appendResponseToBufferedData(rsp, data);
+  //         return [data];
+  //       })
+  //     );
+  //     this.streams[target.url] = stream;
   //   }
-  //   const data = createResponseBufferedData(target);
-  //   stream = webSocket(target.url).pipe(
-  //     finalize(() => {
-  //       console.log('delete');
-  //       delete this.streams[target.url];
-  //     }),
-  //     map(rsp => {
-  //       appendResponseToBufferedData(rsp, data);
-  //       return [data];
-  //     })
-  //   );
-  //   this.streams[target.url] = stream;
-  //   return stream;
+  //   let obs = new Observable<DataFrame[]>(subscriber => {
+  //     let observer = {
+  //       next: (msg: any) => subscriber.next(msg),
+  //       error: (err: any) => subscriber.error(err),
+  //       complete: () => subscriber.complete(),
+  //     };
+  //     let subscription: Subscription = stream.subscribe(observer);
+  //     return () => {
+  //       subscription.unsubscribe();
+  //     };
+  //   });
+  //   return obs;
   // }
+  getStream(target: LiveStreamsTarget): Observable<DataFrame[]> {
+    let stream = this.streams[target.url];
+    if (stream) {
+      return stream;
+    }
+    let streams = this.streams;
+    const data = createResponseBufferedData(target);
+    stream = webSocket({
+      url: target.url,
+      closingObserver: {
+        next() {
+          console.log('closingObserver');
+        },
+      },
+      closeObserver: {
+        next() {
+          console.log('closeObserver');
+          (<WebSocketSubject<any>>stream).unsubscribe();
+          delete streams[target.url];
+        },
+      },
+      openObserver: {
+        next() {
+          console.log('openObserver');
+        },
+      },
+    }).pipe(
+      finalize(() => {
+        console.log('finalize');
+      }),
+      map(rsp => {
+        appendResponseToBufferedData(rsp, data);
+        return [data];
+      })
+    );
+    this.streams[target.url] = stream;
+    return stream;
+  }
 }
